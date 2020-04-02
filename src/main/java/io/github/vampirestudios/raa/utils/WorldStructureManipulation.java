@@ -9,6 +9,9 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.state.property.BooleanProperty;
+import net.minecraft.state.property.EnumProperty;
+import net.minecraft.state.property.IntProperty;
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
@@ -148,16 +151,6 @@ public class WorldStructureManipulation {
         //Place block
         world.setBlockState(pos, Registry.BLOCK.get(Identifier.tryParse(block)).getDefaultState(), 2);
 
-        //Rotate stuff
-        String facing = "NORTH";
-
-        if (properties.get("facing") != null) {
-            facing = properties.get("facing");
-            if (!facing.equals("UP") && !facing.equals("DOWN")) {
-                facing = rotateDir(rotation, facing);
-            }
-        }
-
         //Rotate Wall directions before applying them as properties
 
         //Selecting only the direction attributes from the properties in order to manipulate them
@@ -170,90 +163,86 @@ public class WorldStructureManipulation {
             directions = rotateWall(rotation, directions);
         }
 
-        //Rotate axis property
-        String axis = "x";
-        if (properties.get("axis") != null) {
-            axis = properties.get("axis");
-            axis = (rotation % 2 == 0) ? axis : (axis.equals("x")) ? "z" : (axis.equals("z")) ? "x" : axis;
-        }
+        Map<String, BooleanProperty> booleanProperties = Stream.of(new Object[][] {
+                { "waterlogged",Properties.WATERLOGGED},
+                { "up", Properties.UP},             //Walls
+                { "open", Properties.OPEN},         //Barrel
+                { "snowy", Properties.SNOWY},       //Grassblock
+                { "lit", Properties.LIT},           //Blast_Furnace, Furnace, Smoker
+                { "bottom", Properties.BOTTOM},     //
+                { "hanging", Properties.HANGING},   //Lantern
+                { "powered", Properties.POWERED},   //[Pressure_Plates], Bell
+                { "unstable", Properties.UNSTABLE}, //TNT
+        }).collect(Collectors.toMap(data -> (String) data[0], data -> (BooleanProperty) data[1]));
+
+        Map<String, EnumProperty> enumProperties = Stream.of(new Object[][] {
+                { "half",Properties.BLOCK_HALF},            //Stairs
+                { "shape", Properties.STAIR_SHAPE},         //Stairs
+                { "face", Properties.WALL_MOUNT_LOCATION},  //Grindstone, [Buttons]
+                { "attachment", Properties.ATTACHMENT},     //Bell
+        }).collect(Collectors.toMap(data -> (String) data[0], data -> (EnumProperty) data[1]));
+
+        Map<String, IntProperty> intProperties = Stream.of(new Object[][] {
+                { "distance",Properties.DISTANCE_0_7},            //Scaffolding
+        }).collect(Collectors.toMap(data -> (String) data[0], data -> (IntProperty) data[1]));
+
+
+        boolean isWall = block.endsWith("_wall");
+
+        properties.forEach((name, value) -> {
+            if(booleanProperties.containsKey(name)){
+                world.setBlockState(pos, world.getBlockState(pos).with(booleanProperties.get(name), value.toUpperCase().equals("TRUE")), 2);
+            } else if(enumProperties.containsKey(name)) {
+                world.setBlockState(pos, world.getBlockState(pos).with(enumProperties.get(name), ChestType.valueOf(value.toUpperCase())), 2);
+            } else if(intProperties.containsKey(name)) {
+                world.setBlockState(pos, world.getBlockState(pos).with(intProperties.get(name), Integer.parseInt(value)), 2);
+            } else if(name.equals("type")) {
+                if(block.equals("minecraft:chest") || block.equals("minecraft:trapped_chest")) {
+                    world.setBlockState(pos, world.getBlockState(pos).with(Properties.CHEST_TYPE, ChestType.valueOf(value.toUpperCase())), 2); //Chest
+                } else {
+                    world.setBlockState(pos, world.getBlockState(pos).with(Properties.SLAB_TYPE, SlabType.valueOf(value.toUpperCase())), 2); //Slabs
+                }
+            } else if(name.equals("facing")) {
+                if (block.equals("minecraft:barrel")) {
+                    world.setBlockState(pos, world.getBlockState(pos).with(Properties.FACING, Direction.valueOf(rotateDir(rotation, value).toUpperCase())), 2); //Barrel
+                } else {
+                    world.setBlockState(pos, world.getBlockState(pos).with(Properties.HORIZONTAL_FACING, Direction.valueOf(rotateDir(rotation, value).toUpperCase())), 2); //[Anvils], [Chests], [Stairs], Bell, Blast_Furnace, Furnace, Grindstone, Smoker, Stonecutter,
+                }
+            } else if(name.equals("axis")) {
+                world.setBlockState(pos, world.getBlockState(pos).with(Properties.AXIS, Direction.Axis.fromName(
+                        (rotation % 2 == 0) ? value : (value.equals("x")) ? "z" : (value.equals("z")) ? "x" : value //rotate axis according to rotation
+                        )), 2);
+            } else if(name.equals("north")) {
+
+            } else if(name.equals("west")) {
+
+            } else if(name.equals("south")) {
+
+            } else if(name.equals("east")) {
+
+            }
+        });
+
+
 
         //Give properties to block
         if (world.getBlockState(pos) == Registry.BLOCK.get(Identifier.tryParse(block)).getDefaultState()) { //Make sure the block you're trying to apply this stuff to *actually exists*
-            if (properties.get("waterlogged") != null) {
-                //TODO: ~~
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.WATERLOGGED, properties.get("waterlogged").equals("TRUE")), 2);
-            } if (properties.get("type") != null) {
-                if (block.equals("minecraft:chest")) {
-                    //TODO: [Chests]
-                    world.setBlockState(pos, world.getBlockState(pos).with(Properties.CHEST_TYPE, ChestType.valueOf(properties.get("type").toUpperCase())), 2);
-                } else {
-                    //TODO: [Slabs]
-                    world.setBlockState(pos, world.getBlockState(pos).with(Properties.SLAB_TYPE, SlabType.valueOf(properties.get("type").toUpperCase())), 2);
-                }
-            } if (properties.get("half") != null) {
-                //TODO: [Stairs]
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.BLOCK_HALF, BlockHalf.valueOf(properties.get("half").toUpperCase())), 2);
-            } if (properties.get("shape") != null) {
-                //TODO: [Stairs]
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.STAIR_SHAPE, StairShape.valueOf(properties.get("shape").toUpperCase())), 2);
-            } if (properties.get("facing") != null) {
-                if (block.equals("minecraft:barrel")) {
-                    //TODO: Barrel
-                    world.setBlockState(pos, world.getBlockState(pos).with(Properties.FACING, Direction.valueOf(facing.toUpperCase())), 2);
-                } else {
-                    //TODO: [Anvils], [Chests], [Stairs], Bell, Blast_Furnace, Furnace, Grindstone, Smoker, Stonecutter,
-                    world.setBlockState(pos, world.getBlockState(pos).with(Properties.HORIZONTAL_FACING, Direction.valueOf(facing.toUpperCase())), 2);
-                }
-            } if (properties.get("north") != null || properties.get("west") != null || properties.get("south") != null || properties.get("east") != null) {
+
+            if (properties.get("north") != null || properties.get("west") != null || properties.get("south") != null || properties.get("east") != null) {
                 if(!block.endsWith("_wall")) {
                     //Fences and Iron Bars, both use booleans to represent their connection
                     world.setBlockState(pos, world.getBlockState(pos).with(Properties.NORTH, directions.getOrDefault("north", "FALSE").equals("TRUE")), 2);
                     world.setBlockState(pos, world.getBlockState(pos).with(Properties.WEST, directions.getOrDefault("west", "FALSE").equals("TRUE")), 2);
                     world.setBlockState(pos, world.getBlockState(pos).with(Properties.SOUTH, directions.getOrDefault("south", "FALSE").equals("TRUE")), 2);
                     world.setBlockState(pos, world.getBlockState(pos).with(Properties.EAST, directions.getOrDefault("east", "FALSE").equals("TRUE")), 2);
-                } else {
+                }
+                else {
                     //Walls use an Enum (none, tall, low) to describe their connections to other neighbouring blocks
                     world.setBlockState(pos, world.getBlockState(pos).with(Properties.NORTH_WALL_SHAPE, WallShape.valueOf(directions.getOrDefault("north","none").replace("false","none").replace("true","low").toUpperCase())), 2);
                     world.setBlockState(pos, world.getBlockState(pos).with(Properties.WEST_WALL_SHAPE, WallShape.valueOf(directions.getOrDefault("west","none").replace("false","none").replace("true","low").toUpperCase())), 2);
                     world.setBlockState(pos, world.getBlockState(pos).with(Properties.SOUTH_WALL_SHAPE, WallShape.valueOf(directions.getOrDefault("south","none").replace("false","none").replace("true","low").toUpperCase())), 2);
                     world.setBlockState(pos, world.getBlockState(pos).with(Properties.EAST_WALL_SHAPE, WallShape.valueOf(directions.getOrDefault("east","none").replace("false","none").replace("true","low").toUpperCase())), 2);
                 }
-            } if (properties.get("up") != null) {
-                //TODO: [Walls]
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.UP, properties.get("up").toUpperCase().equals("TRUE")), 2);
-            } if (properties.get("open") != null) {
-                //TODO: Barrel
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.OPEN, properties.get("open").toUpperCase().equals("TRUE")), 2);
-            } if (properties.get("snowy") != null) {
-                //TODO: Grass_Block
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.SNOWY, properties.get("snowy").toUpperCase().equals("TRUE")), 2);
-            } if (properties.get("lit") != null) {
-                //TODO: Blast_Furnace, Furnace, Smoker
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.LIT, properties.get("lit").toUpperCase().equals("TRUE")), 2);
-            } if (properties.get("bottom") != null) {
-                //TODO: ~~
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.BOTTOM, properties.get("bottom").toUpperCase().equals("TRUE")), 2);
-            } if (properties.get("hanging") != null) {
-                //TODO: Lantern
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.HANGING, properties.get("hanging").toUpperCase().equals("TRUE")), 2);
-            } if (properties.get("powered") != null) {
-                //TODO: [Pressure_Plates], Bell
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.POWERED, properties.get("powered").toUpperCase().equals("TRUE")), 2);
-            } if (properties.get("unstable") != null) {
-                //TODO: TNT
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.UNSTABLE, properties.get("unstable").toUpperCase().equals("TRUE")), 2);
-            } if (properties.get("face") != null) {
-                //TODO: Grindstone
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.valueOf(properties.get("face").toUpperCase())), 2);
-            } if (properties.get("distance") != null) {
-                //TODO: Scaffolding
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.DISTANCE_0_7, Integer.parseInt(properties.get("distance"))), 2);
-            } if (properties.get("attachment") != null) {
-                //TODO: Bell
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.ATTACHMENT, Attachment.valueOf(properties.get("attachment").toUpperCase())), 2);
-            } if (properties.get("axis") != null) {
-                //TODO: Bone_Block
-                world.setBlockState(pos, world.getBlockState(pos).with(Properties.AXIS, Direction.Axis.fromName(axis)), 2);
             }
         }
 
@@ -322,7 +311,7 @@ public class WorldStructureManipulation {
     private static String rotateDir(int rotation, String direction) {
         if (rotation > 0) {
             String dir = rotateDir(rotation - 1, direction);
-            return (dir.equals("NORTH") ? "WEST" : (dir.equals("WEST")) ? "SOUTH" : (dir.equals("SOUTH")) ? "EAST" : "NORTH");
+            return (dir.equals("NORTH") ? "WEST" : (dir.equals("WEST")) ? "SOUTH" : (dir.equals("SOUTH")) ? "EAST" : (dir.equals("EAST")) ? "NORTH": dir);
         } else {
             return direction;
         }
